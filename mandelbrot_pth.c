@@ -1,6 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <pthread.h>
+
+const int num_threads = 32;
+const int num_thread_rows = 16; // numero de linhas processadas por vez
+
+int next_row = 0;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 double c_x_min;
 double c_x_max;
@@ -111,7 +118,7 @@ void write_to_file(){
     fclose(file);
 };
 
-void compute_mandelbrot(){
+void *compute_mandelbrot(void *arg){
     double z_x;
     double z_y;
     double z_x_squared;
@@ -125,36 +132,50 @@ void compute_mandelbrot(){
     double c_x;
     double c_y;
 
-    for(i_y = 0; i_y < i_y_max; i_y++){
-        c_y = c_y_min + i_y * pixel_height;
+    while (1) {
+        pthread_mutex_lock(&mutex);
+        int start = next_row;
+        next_row += num_thread_rows;
+        pthread_mutex_unlock(&mutex);
 
-        if(fabs(c_y) < pixel_height / 2){
-            c_y = 0.0;
-        };
+        if (start >= i_y_max) break;
 
-        for(i_x = 0; i_x < i_x_max; i_x++){
-            c_x         = c_x_min + i_x * pixel_width;
+        int end = start + num_thread_rows;
+        if (end >= i_y_max) end = i_y_max;
 
-            z_x         = 0.0;
-            z_y         = 0.0;
+        for (i_y = start; i_y < end; i_y++) {
+            c_y = c_y_min + i_y * pixel_height;
 
-            z_x_squared = 0.0;
-            z_y_squared = 0.0;
-
-            for(iteration = 0;
-                iteration < iteration_max && \
-                ((z_x_squared + z_y_squared) < escape_radius_squared);
-                iteration++){
-                z_y         = 2 * z_x * z_y + c_y;
-                z_x         = z_x_squared - z_y_squared + c_x;
-
-                z_x_squared = z_x * z_x;
-                z_y_squared = z_y * z_y;
+            if (fabs(c_y) < pixel_height / 2) {
+                c_y = 0.0;
             };
 
-            update_rgb_buffer(iteration, i_x, i_y);
+            for (i_x = 0; i_x < i_x_max; i_x++) {
+                c_x = c_x_min + i_x * pixel_width;
+
+                z_x = 0.0;
+                z_y = 0.0;
+
+                z_x_squared = 0.0;
+                z_y_squared = 0.0;
+
+                for (iteration = 0;
+                     iteration < iteration_max &&
+                     ((z_x_squared + z_y_squared) < escape_radius_squared);
+                     iteration++) {
+                    z_y = 2 * z_x * z_y + c_y;
+                    z_x = z_x_squared - z_y_squared + c_x;
+
+                    z_x_squared = z_x * z_x;
+                    z_y_squared = z_y * z_y;
+                };
+
+                update_rgb_buffer(iteration, i_x, i_y);
+            };
         };
-    };
+    }
+
+    return NULL;
 };
 
 int main(int argc, char *argv[]){
@@ -162,7 +183,12 @@ int main(int argc, char *argv[]){
 
     allocate_image_buffer();
 
-    compute_mandelbrot();
+    pthread_t *threads = (pthread_t*)malloc(sizeof(pthread_t) * num_threads);
+    for (int i=0; i<num_threads; i++) pthread_create(&threads[i], NULL, compute_mandelbrot, NULL);
+    for (int i=0; i<num_threads; i++) pthread_join(threads[i], NULL);
+
+    free(threads);
+    pthread_mutex_destroy(&mutex);
 
     write_to_file();
 
