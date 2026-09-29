@@ -14,7 +14,7 @@ double pixel_height;
 int iteration_max = 200;
 
 int image_size;
-unsigned char **image_buffer;
+unsigned char (*image_buffer)[3];
 
 int i_x_max;
 int i_y_max;
@@ -47,12 +47,11 @@ int show_checksum = 0;
 volatile unsigned long long benchmark_checksum = 0;
 
 void allocate_image_buffer(){
-    int rgb_size = 3;
-    image_buffer = (unsigned char **) malloc(sizeof(unsigned char *) * image_buffer_size);
-
-    for(int i = 0; i < image_buffer_size; i++){
-        image_buffer[i] = (unsigned char *) malloc(sizeof(unsigned char) * rgb_size);
-    };
+    image_buffer = malloc((size_t)image_buffer_size * sizeof(*image_buffer));
+    if (image_buffer == NULL) {
+        fprintf(stderr, "Erro: não foi possível alocar a imagem.\n");
+        exit(EXIT_FAILURE);
+    }
 };
 
 void init(int argc, char *argv[]){
@@ -106,15 +105,27 @@ void write_to_file(){
     int max_color_component_value = 255;
 
     file = fopen(filename,"wb");
+    if (file == NULL) {
+        perror("Erro ao abrir output.ppm");
+        exit(EXIT_FAILURE);
+    }
 
     fprintf(file, "P6\n %s\n %d\n %d\n %d\n", comment,
             i_x_max, i_y_max, max_color_component_value);
 
-    for(int i = 0; i < image_buffer_size; i++){
-        fwrite(image_buffer[i], 1 , 3, file);
-    };
+    if (fwrite(image_buffer, sizeof(*image_buffer), (size_t)image_buffer_size, file)
+        != (size_t)image_buffer_size) {
+        perror("Erro ao gravar a imagem");
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
 
-    fclose(file);
+    free(image_buffer);
+    image_buffer = NULL;
+    if (fclose(file) != 0) {
+        perror("Erro ao fechar output.ppm");
+        exit(EXIT_FAILURE);
+    }
 };
 
 void compute_mandelbrot(){

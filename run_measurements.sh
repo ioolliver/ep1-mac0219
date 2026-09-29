@@ -8,6 +8,17 @@ ITERATIONS=10
 INITIAL_SIZE=16
 
 THREADS=(1 2 4 8 16 32)
+
+if ! command -v perf >/dev/null 2>&1; then
+    echo 'Erro: perf não está instalado.' >&2
+    exit 1
+fi
+if ! perf stat true >/dev/null 2>&1; then
+    echo 'Erro: perf stat não pode medir nesta máquina (verifique permissões).' >&2
+    exit 1
+fi
+
+trap 'rm -f perf.tmp' EXIT
 if (($#)); then
     NAMES=("$@")
 else
@@ -37,8 +48,17 @@ measure() {
     echo "$NAME $REGION $SIZE threads=$NTHREADS io=$IO" >&2
 
     for ((run=1; run<=$MEASUREMENTS; run++)); do
-        OMP_NUM_THREADS=$NTHREADS perf stat ./"$NAME" $ARGS 2> perf.tmp > /dev/null
-        TIME=$(awk '/seconds time elapsed/ {print $1}' perf.tmp)
+        if ! OMP_NUM_THREADS=$NTHREADS perf stat ./"$NAME" $ARGS 2> perf.tmp > /dev/null; then
+            echo "Erro: medição falhou para $NAME $REGION $SIZE threads=$NTHREADS io=$IO run=$run" >&2
+            cat perf.tmp >&2
+            exit 1
+        fi
+        TIME=$(awk '$2 == "seconds" && $3 == "time" && $4 == "elapsed" {print $1}' perf.tmp)
+        if [[ ! $TIME =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            echo "Erro: tempo inválido para $NAME $REGION $SIZE threads=$NTHREADS io=$IO run=$run" >&2
+            cat perf.tmp >&2
+            exit 1
+        fi
 
         cat perf.tmp >> "results/$NAME/$REGION.log"
         echo "$NAME,$REGION,$SIZE,$NTHREADS,$IO,$run,$TIME" >> "results/$NAME/measurements.csv"
@@ -74,4 +94,4 @@ done
 head -n 1 -q results/*/measurements.csv | head -n 1 > results/measurements.csv
 tail -n +2 -q results/*/measurements.csv >> results/measurements.csv
 
-rm -f output.ppm perf.tmp
+rm -f output.ppm
