@@ -9,6 +9,11 @@ INITIAL_SIZE=16
 OUTPUT_DIR=output
 
 THREADS=(1 2 4 8 16 32)
+RESUME=0
+if [[ ${1:-} == --resume ]]; then
+    RESUME=1
+    shift
+fi
 
 if command -v perf >/dev/null 2>&1 && perf stat true >/dev/null 2>&1; then
     TIMER=perf
@@ -41,13 +46,21 @@ measure() {
     local IO=$5
     local ARGS
     local TIME
+    local KEY
+    local EXECUTED=0
 
     ARGS="${COORDS[$REGION]} $SIZE"
     [[ $IO == no ]] && ARGS="$ARGS --benchmark"
 
-    echo "$NAME $REGION $SIZE threads=$NTHREADS io=$IO" >&2
-
     for ((run=1; run<=$MEASUREMENTS; run++)); do
+        KEY="$NAME,$REGION,$SIZE,$NTHREADS,$IO,$run"
+        if [[ ${DONE[$KEY]+present} ]]; then
+            continue
+        fi
+        if ((EXECUTED == 0)); then
+            echo "$NAME $REGION $SIZE threads=$NTHREADS io=$IO" >&2
+        fi
+
         if [[ $TIMER == perf ]]; then
             if (cd "$OUTPUT_DIR" && OMP_NUM_THREADS=$NTHREADS perf stat ../"$NAME" $ARGS 2> perf.tmp > /dev/null); then
                 TIME=$(awk '$2 == "seconds" && $3 == "time" && $4 == "elapsed" {print $1}' "$OUTPUT_DIR/perf.tmp")
@@ -74,10 +87,18 @@ measure() {
 
         cat "$OUTPUT_DIR/perf.tmp" >> "$OUTPUT_DIR/$NAME/$REGION.log"
         echo "$NAME,$REGION,$SIZE,$NTHREADS,$IO,$run,$TIME" >> "$OUTPUT_DIR/$NAME/measurements.csv"
+        DONE["$KEY"]=1
+        EXECUTED=$((EXECUTED + 1))
     done
 
     if [[ $IO == yes ]]; then
-        mv "$OUTPUT_DIR/output.ppm" "$OUTPUT_DIR/images/${REGION}_${SIZE}.ppm"
+        if ((EXECUTED > 0)); then
+            mv "$OUTPUT_DIR/output.ppm" "$OUTPUT_DIR/images/${REGION}_${SIZE}.ppm"
+        elif [[ ! -f $OUTPUT_DIR/images/${REGION}_${SIZE}.ppm ]]; then
+            # A queda pode ter ocorrido depois da última linha do CSV e antes do mv.
+            (cd "$OUTPUT_DIR" && ../mandelbrot_seq ${COORDS[$REGION]} "$SIZE")
+            mv "$OUTPUT_DIR/output.ppm" "$OUTPUT_DIR/images/${REGION}_${SIZE}.ppm"
+        fi
     fi
 }
 
@@ -85,9 +106,34 @@ make
 mkdir -p "$OUTPUT_DIR/images"
 
 for NAME in "${NAMES[@]}"; do
-    rm -rf "$OUTPUT_DIR/$NAME"
-    mkdir "$OUTPUT_DIR/$NAME"
-    echo "version,region,size,threads,io,run,time_s" > "$OUTPUT_DIR/$NAME/measurements.csv"
+    case $NAME in
+        mandelbrot_seq|mandelbrot_pth|mandelbrot_omp) ;;
+        *) echo "Versão desconhecida: $NAME" >&2; exit 1 ;;
+    esac
+
+    declare -A DONE=()
+    CSV="$OUTPUT_DIR/$NAME/measurements.csv"
+    if ((RESUME)) && [[ -f $CSV ]]; then
+        while IFS=, read -r version region size threads io run time_s extra; do
+            [[ $version == version ]] && continue
+            if [[ $version != "$NAME" || ! $time_s =~ ^[0-9]+([.][0-9]+)?$ || ! $run =~ ^[0-9]+$ ]]; then
+                echo "Linha inválida em $CSV: $version,$region,$size,$threads,$io,$run,$time_s" >&2
+                exit 1
+            fi
+            KEY="$version,$region,$size,$threads,$io,$run"
+            if [[ ${DONE[$KEY]+present} ]]; then
+                echo "Medição duplicada em $CSV: $KEY" >&2
+                exit 1
+            fi
+            DONE["$KEY"]=1
+        done < "$CSV"
+        echo "$NAME: ${#DONE[@]} medições já concluídas" >&2
+    else
+        rm -rf "$OUTPUT_DIR/$NAME"
+        mkdir -p "$OUTPUT_DIR/$NAME"
+        echo "version,region,size,threads,io,run,time_s" > "$CSV"
+    fi
+    mkdir -p "$OUTPUT_DIR/$NAME"
 
     SIZE=$INITIAL_SIZE
 
