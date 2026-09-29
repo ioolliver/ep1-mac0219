@@ -45,8 +45,8 @@ int colors[17][3] = {
 int benchmark_mode = 0;
 int show_checksum = 0;
 volatile unsigned long long benchmark_checksum = 0;
-
-const int num_threads = 32;
+ 
+int num_threads = 32;
 const int num_thread_rows = 10;  // numero de linhas processadas por vez
 
 int next_row = 0;
@@ -213,6 +213,11 @@ int main(int argc, char *argv[]){
                 argv[0]);
         return 1;
     }
+  
+    char *threads_env = getenv("OMP_NUM_THREADS");
+    if (threads_env != NULL) {
+      num_threads = atoi(threads_env);
+  }
 
     if (!benchmark_mode) {
         allocate_image_buffer();

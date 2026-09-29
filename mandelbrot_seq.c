@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 double c_x_min;
 double c_x_max;
@@ -39,6 +40,11 @@ int colors[17][3] = {
                         {106, 52, 3},
                         {16, 16, 16},
                     };
+                    
+// define variáveis para o benchmark
+int benchmark_mode = 0;
+int show_checksum = 0;
+volatile unsigned long long benchmark_checksum = 0;
 
 void allocate_image_buffer(){
     int rgb_size = 3;
@@ -112,6 +118,7 @@ void write_to_file(){
 };
 
 void compute_mandelbrot(){
+    unsigned long long checksum = 0;
     double z_x;
     double z_y;
     double z_x_squared;
@@ -152,19 +159,53 @@ void compute_mandelbrot(){
                 z_y_squared = z_y * z_y;
             };
 
-            update_rgb_buffer(iteration, i_x, i_y);
+            if(benchmark_mode){
+              checksum += (unsigned long long) iteration;
+          }
+          else{
+              update_rgb_buffer(iteration, i_x, i_y);
+          };
         };
     };
+    if(benchmark_mode){
+    benchmark_checksum = checksum;
+  };
 };
 
 int main(int argc, char *argv[]){
     init(argc, argv);
 
-    allocate_image_buffer();
+    if(argc == 7){
+        if(strcmp(argv[6], "--benchmark") == 0){
+            benchmark_mode = 1;
+        }
+        else if(strcmp(argv[6], "--benchmark-check") == 0){
+            benchmark_mode = 1;
+            show_checksum = 1;
+        }
+        else{
+            fprintf(stderr, "Opção desconhecida: %s\n", argv[6]);
+            return 1;
+        };
+    }
+    else if(argc != 6){
+        fprintf(stderr, "Uso: %s cx_min cx_max cy_min cy_max tamanho [--benchmark|--benchmark-check]\n",
+                argv[0]);
+        return 1;
+    };
+
+    if(!benchmark_mode){
+        allocate_image_buffer();
+    };
 
     compute_mandelbrot();
 
-    write_to_file();
+    if(!benchmark_mode){
+        write_to_file();
+    }
+    else if(show_checksum){
+        printf("%llu\n", benchmark_checksum);
+    };
 
     return 0;
 };
