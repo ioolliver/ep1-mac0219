@@ -9,14 +9,13 @@ INITIAL_SIZE=16
 
 THREADS=(1 2 4 8 16 32)
 
-if ! command -v perf >/dev/null 2>&1; then
-    echo 'Erro: perf não está instalado.' >&2
-    exit 1
+if command -v perf >/dev/null 2>&1 && perf stat true >/dev/null 2>&1; then
+    TIMER=perf
+else
+    TIMER=clock_gettime
+    make wall_timer
 fi
-if ! perf stat true >/dev/null 2>&1; then
-    echo 'Erro: perf stat não pode medir nesta máquina (verifique permissões).' >&2
-    exit 1
-fi
+echo "Temporizador: $TIMER (tempo real decorrido)" >&2
 
 trap 'rm -f perf.tmp' EXIT
 if (($#)); then
@@ -48,12 +47,24 @@ measure() {
     echo "$NAME $REGION $SIZE threads=$NTHREADS io=$IO" >&2
 
     for ((run=1; run<=$MEASUREMENTS; run++)); do
-        if ! OMP_NUM_THREADS=$NTHREADS perf stat ./"$NAME" $ARGS 2> perf.tmp > /dev/null; then
+        if [[ $TIMER == perf ]]; then
+            if OMP_NUM_THREADS=$NTHREADS perf stat ./"$NAME" $ARGS 2> perf.tmp > /dev/null; then
+                TIME=$(awk '$2 == "seconds" && $3 == "time" && $4 == "elapsed" {print $1}' perf.tmp)
+            else
+                TIME=
+            fi
+        else
+            if OMP_NUM_THREADS=$NTHREADS ./wall_timer ./"$NAME" $ARGS 2> perf.tmp > /dev/null; then
+                TIME=$(awk '$1 == "TIME_S" {print $2}' perf.tmp)
+            else
+                TIME=
+            fi
+        fi
+        if [[ -z $TIME ]]; then
             echo "Erro: medição falhou para $NAME $REGION $SIZE threads=$NTHREADS io=$IO run=$run" >&2
             cat perf.tmp >&2
             exit 1
         fi
-        TIME=$(awk '$2 == "seconds" && $3 == "time" && $4 == "elapsed" {print $1}' perf.tmp)
         if [[ ! $TIME =~ ^[0-9]+([.][0-9]+)?$ ]]; then
             echo "Erro: tempo inválido para $NAME $REGION $SIZE threads=$NTHREADS io=$IO run=$run" >&2
             cat perf.tmp >&2

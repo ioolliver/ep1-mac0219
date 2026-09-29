@@ -11,6 +11,9 @@ CC_PTH=-pthread
 .PHONY: all
 all: $(OUTPUT)_omp $(OUTPUT)_pth $(OUTPUT)_seq
 
+wall_timer: wall_timer.c
+	$(CC) -o wall_timer $(CC_OPT) wall_timer.c
+
 $(OUTPUT)_omp: $(OUTPUT)_omp.c
 	$(CC) -o $(OUTPUT)_omp $(CC_OPT) $(CC_OMP) $(OUTPUT)_omp.c
 
@@ -22,4 +25,4 @@ $(OUTPUT)_seq: $(OUTPUT)_seq.c
 
 .PHONY: clean
 clean:
-	rm -f $(OUTPUT)_omp $(OUTPUT)_pth $(OUTPUT)_seq *$(IMAGE)
+	rm -f $(OUTPUT)_omp $(OUTPUT)_pth $(OUTPUT)_seq wall_timer *$(IMAGE)
