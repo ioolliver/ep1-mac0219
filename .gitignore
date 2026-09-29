@@ -2,4 +2,4 @@ mandelbrot_omp
 mandelbrot_pth
 mandelbrot_seq
 wall_timer
-output/
+output/images

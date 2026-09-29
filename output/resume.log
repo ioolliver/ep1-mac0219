@@ -1,0 +1,31 @@
+make: 'wall_timer' is up to date.
+Temporizador: clock_gettime (tempo real decorrido)
+make: Nothing to be done for 'all'.
+mandelbrot_omp: 2139 medições já concluídas
+mandelbrot_omp triple_spiral 4096 threads=8 io=no
+mandelbrot_omp triple_spiral 4096 threads=16 io=no
+mandelbrot_omp triple_spiral 4096 threads=32 io=no
+mandelbrot_omp full 8192 threads=1 io=no
+mandelbrot_omp full 8192 threads=2 io=no
+mandelbrot_omp full 8192 threads=4 io=no
+mandelbrot_omp full 8192 threads=8 io=no
+mandelbrot_omp full 8192 threads=16 io=no
+mandelbrot_omp full 8192 threads=32 io=no
+mandelbrot_omp seahorse 8192 threads=1 io=no
+mandelbrot_omp seahorse 8192 threads=2 io=no
+mandelbrot_omp seahorse 8192 threads=4 io=no
+mandelbrot_omp seahorse 8192 threads=8 io=no
+mandelbrot_omp seahorse 8192 threads=16 io=no
+mandelbrot_omp seahorse 8192 threads=32 io=no
+mandelbrot_omp elephant 8192 threads=1 io=no
+mandelbrot_omp elephant 8192 threads=2 io=no
+mandelbrot_omp elephant 8192 threads=4 io=no
+mandelbrot_omp elephant 8192 threads=8 io=no
+mandelbrot_omp elephant 8192 threads=16 io=no
+mandelbrot_omp elephant 8192 threads=32 io=no
+mandelbrot_omp triple_spiral 8192 threads=1 io=no
+mandelbrot_omp triple_spiral 8192 threads=2 io=no
+mandelbrot_omp triple_spiral 8192 threads=4 io=no
+mandelbrot_omp triple_spiral 8192 threads=8 io=no
+mandelbrot_omp triple_spiral 8192 threads=16 io=no
+mandelbrot_omp triple_spiral 8192 threads=32 io=no
