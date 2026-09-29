@@ -2,12 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <pthread.h>
-
-const int num_threads = 32;
-const int num_thread_rows = 16; // numero de linhas processadas por vez
-
-int next_row = 0;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#include <string.h>
 
 double c_x_min;
 double c_x_max;
@@ -46,6 +41,17 @@ int colors[17][3] = {
                         {106, 52, 3},
                         {16, 16, 16},
                     };
+
+int benchmark_mode = 0;
+int show_checksum = 0;
+volatile unsigned long long benchmark_checksum = 0;
+
+const int num_threads = 32;
+const int num_thread_rows = 10;  // numero de linhas processadas por vez
+
+int next_row = 0;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 void allocate_image_buffer(){
     int rgb_size = 3;
@@ -124,6 +130,7 @@ void *compute_mandelbrot(void *arg){
     double z_x_squared;
     double z_y_squared;
     double escape_radius_squared = 4;
+    unsigned long long checksum = 0;
 
     int iteration;
     int i_x;
@@ -170,9 +177,19 @@ void *compute_mandelbrot(void *arg){
                     z_y_squared = z_y * z_y;
                 };
 
-                update_rgb_buffer(iteration, i_x, i_y);
+                if (benchmark_mode) {
+                    checksum += (unsigned long long)iteration;
+                } else {
+                    update_rgb_buffer(iteration, i_x, i_y);
+                }
             };
         };
+    }
+
+    if (benchmark_mode) {
+        pthread_mutex_lock(&mutex);
+        benchmark_checksum += checksum;
+        pthread_mutex_unlock(&mutex);
     }
 
     return NULL;
@@ -181,8 +198,26 @@ void *compute_mandelbrot(void *arg){
 int main(int argc, char *argv[]){
     init(argc, argv);
 
-    allocate_image_buffer();
+    if (argc == 7) {
+        if (strcmp(argv[6], "--benchmark") == 0) {
+            benchmark_mode = 1;
+        } else if (strcmp(argv[6], "--benchmark-check") == 0) {
+            benchmark_mode = 1;
+            show_checksum = 1;
+        } else {
+            fprintf(stderr, "Opção desconhecida: %s\n", argv[6]);
+            return 1;
+        }
+    } else if (argc != 6) {
+        fprintf(stderr, "Uso: %s cx_min cx_max cy_min cy_max tamanho [--benchmark|--benchmark-check]\n",
+                argv[0]);
+        return 1;
+    }
 
+    if (!benchmark_mode) {
+        allocate_image_buffer();
+    }
+    
     pthread_t *threads = (pthread_t*)malloc(sizeof(pthread_t) * num_threads);
     for (int i=0; i<num_threads; i++) pthread_create(&threads[i], NULL, compute_mandelbrot, NULL);
     for (int i=0; i<num_threads; i++) pthread_join(threads[i], NULL);
@@ -190,7 +225,11 @@ int main(int argc, char *argv[]){
     free(threads);
     pthread_mutex_destroy(&mutex);
 
-    write_to_file();
+    if (!benchmark_mode) {
+        write_to_file();
+    } else if (show_checksum) {
+        printf("%llu\n", benchmark_checksum);
+    }
 
     return 0;
 };
