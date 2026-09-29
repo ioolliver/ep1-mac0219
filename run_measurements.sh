@@ -1,5 +1,6 @@
 #! /bin/bash
 
+set -euo pipefail
 export LC_ALL=C
 
 MEASUREMENTS=10
@@ -7,7 +8,11 @@ ITERATIONS=10
 INITIAL_SIZE=16
 
 THREADS=(1 2 4 8 16 32)
-NAMES=(${@:-mandelbrot_seq mandelbrot_pth mandelbrot_omp})
+if (($#)); then
+    NAMES=("$@")
+else
+    NAMES=(mandelbrot_seq mandelbrot_pth mandelbrot_omp)
+fi
 REGIONS=('full' 'seahorse' 'elephant' 'triple_spiral')
 
 declare -A COORDS=(
@@ -18,11 +23,13 @@ declare -A COORDS=(
 )
 
 measure() {
-    NAME=$1
-    REGION=$2
-    SIZE=$3
-    NTHREADS=$4
-    IO=$5
+    local NAME=$1
+    local REGION=$2
+    local SIZE=$3
+    local NTHREADS=$4
+    local IO=$5
+    local ARGS
+    local TIME
 
     ARGS="${COORDS[$REGION]} $SIZE"
     [[ $IO == no ]] && ARGS="$ARGS --benchmark"
@@ -30,32 +37,32 @@ measure() {
     echo "$NAME $REGION $SIZE threads=$NTHREADS io=$IO" >&2
 
     for ((run=1; run<=$MEASUREMENTS; run++)); do
-        OMP_NUM_THREADS=$NTHREADS perf stat ./$NAME $ARGS 2> perf.tmp > /dev/null
+        OMP_NUM_THREADS=$NTHREADS perf stat ./"$NAME" $ARGS 2> perf.tmp > /dev/null
         TIME=$(awk '/seconds time elapsed/ {print $1}' perf.tmp)
 
-        cat perf.tmp >> results/$NAME/$REGION.log
-        echo "$NAME,$REGION,$SIZE,$NTHREADS,$IO,$run,$TIME" >> results/$NAME/measurements.csv
+        cat perf.tmp >> "results/$NAME/$REGION.log"
+        echo "$NAME,$REGION,$SIZE,$NTHREADS,$IO,$run,$TIME" >> "results/$NAME/measurements.csv"
     done
 }
 
 make
 mkdir -p results
 
-for NAME in ${NAMES[@]}; do
-    rm -rf results/$NAME
-    mkdir results/$NAME
-    echo "version,region,size,threads,io,run,time_s" > results/$NAME/measurements.csv
+for NAME in "${NAMES[@]}"; do
+    rm -rf "results/$NAME"
+    mkdir "results/$NAME"
+    echo "version,region,size,threads,io,run,time_s" > "results/$NAME/measurements.csv"
 
     SIZE=$INITIAL_SIZE
 
     for ((i=1; i<=$ITERATIONS; i++)); do
-        for REGION in ${REGIONS[@]}; do
+        for REGION in "${REGIONS[@]}"; do
             if [[ $NAME == mandelbrot_seq ]]; then
-                measure $NAME $REGION $SIZE 1 yes
-                measure $NAME $REGION $SIZE 1 no
+                measure "$NAME" "$REGION" "$SIZE" 1 yes
+                measure "$NAME" "$REGION" "$SIZE" 1 no
             else
-                for NTHREADS in ${THREADS[@]}; do
-                    measure $NAME $REGION $SIZE $NTHREADS no
+                for NTHREADS in "${THREADS[@]}"; do
+                    measure "$NAME" "$REGION" "$SIZE" "$NTHREADS" no
                 done
             fi
         done
