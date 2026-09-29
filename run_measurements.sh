@@ -6,6 +6,7 @@ export LC_ALL=C
 MEASUREMENTS=10
 ITERATIONS=10
 INITIAL_SIZE=16
+OUTPUT_DIR=output
 
 THREADS=(1 2 4 8 16 32)
 
@@ -17,7 +18,7 @@ else
 fi
 echo "Temporizador: $TIMER (tempo real decorrido)" >&2
 
-trap 'rm -f perf.tmp' EXIT
+trap 'rm -f "$OUTPUT_DIR/perf.tmp"' EXIT
 if (($#)); then
     NAMES=("$@")
 else
@@ -48,41 +49,45 @@ measure() {
 
     for ((run=1; run<=$MEASUREMENTS; run++)); do
         if [[ $TIMER == perf ]]; then
-            if OMP_NUM_THREADS=$NTHREADS perf stat ./"$NAME" $ARGS 2> perf.tmp > /dev/null; then
-                TIME=$(awk '$2 == "seconds" && $3 == "time" && $4 == "elapsed" {print $1}' perf.tmp)
+            if (cd "$OUTPUT_DIR" && OMP_NUM_THREADS=$NTHREADS perf stat ../"$NAME" $ARGS 2> perf.tmp > /dev/null); then
+                TIME=$(awk '$2 == "seconds" && $3 == "time" && $4 == "elapsed" {print $1}' "$OUTPUT_DIR/perf.tmp")
             else
                 TIME=
             fi
         else
-            if OMP_NUM_THREADS=$NTHREADS ./wall_timer ./"$NAME" $ARGS 2> perf.tmp > /dev/null; then
-                TIME=$(awk '$1 == "TIME_S" {print $2}' perf.tmp)
+            if (cd "$OUTPUT_DIR" && OMP_NUM_THREADS=$NTHREADS ../wall_timer ../"$NAME" $ARGS 2> perf.tmp > /dev/null); then
+                TIME=$(awk '$1 == "TIME_S" {print $2}' "$OUTPUT_DIR/perf.tmp")
             else
                 TIME=
             fi
         fi
         if [[ -z $TIME ]]; then
             echo "Erro: medição falhou para $NAME $REGION $SIZE threads=$NTHREADS io=$IO run=$run" >&2
-            cat perf.tmp >&2
+            cat "$OUTPUT_DIR/perf.tmp" >&2
             exit 1
         fi
         if [[ ! $TIME =~ ^[0-9]+([.][0-9]+)?$ ]]; then
             echo "Erro: tempo inválido para $NAME $REGION $SIZE threads=$NTHREADS io=$IO run=$run" >&2
-            cat perf.tmp >&2
+            cat "$OUTPUT_DIR/perf.tmp" >&2
             exit 1
         fi
 
-        cat perf.tmp >> "results/$NAME/$REGION.log"
-        echo "$NAME,$REGION,$SIZE,$NTHREADS,$IO,$run,$TIME" >> "results/$NAME/measurements.csv"
+        cat "$OUTPUT_DIR/perf.tmp" >> "$OUTPUT_DIR/$NAME/$REGION.log"
+        echo "$NAME,$REGION,$SIZE,$NTHREADS,$IO,$run,$TIME" >> "$OUTPUT_DIR/$NAME/measurements.csv"
     done
+
+    if [[ $IO == yes ]]; then
+        mv "$OUTPUT_DIR/output.ppm" "$OUTPUT_DIR/images/${REGION}_${SIZE}.ppm"
+    fi
 }
 
 make
-mkdir -p results
+mkdir -p "$OUTPUT_DIR/images"
 
 for NAME in "${NAMES[@]}"; do
-    rm -rf "results/$NAME"
-    mkdir "results/$NAME"
-    echo "version,region,size,threads,io,run,time_s" > "results/$NAME/measurements.csv"
+    rm -rf "$OUTPUT_DIR/$NAME"
+    mkdir "$OUTPUT_DIR/$NAME"
+    echo "version,region,size,threads,io,run,time_s" > "$OUTPUT_DIR/$NAME/measurements.csv"
 
     SIZE=$INITIAL_SIZE
 
@@ -102,7 +107,5 @@ for NAME in "${NAMES[@]}"; do
     done
 done
 
-head -n 1 -q results/*/measurements.csv | head -n 1 > results/measurements.csv
-tail -n +2 -q results/*/measurements.csv >> results/measurements.csv
-
-rm -f output.ppm
+head -n 1 -q "$OUTPUT_DIR"/*/measurements.csv | head -n 1 > "$OUTPUT_DIR/measurements.csv"
+tail -n +2 -q "$OUTPUT_DIR"/*/measurements.csv >> "$OUTPUT_DIR/measurements.csv"
