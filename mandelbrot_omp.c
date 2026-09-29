@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 double c_x_min;
 double c_x_max;
@@ -39,6 +40,10 @@ int colors[17][3] = {
                         {106, 52, 3},
                         {16, 16, 16},
                     };
+
+int benchmark_mode = 0;
+int show_checksum = 0;
+volatile unsigned long long benchmark_checksum = 0;
 
 void allocate_image_buffer(){
     int rgb_size = 3;
@@ -111,60 +116,80 @@ void write_to_file(){
     fclose(file);
 };
 
-void compute_mandelbrot(){
-    double z_x;
-    double z_y;
-    double z_x_squared;
-    double z_y_squared;
-    double escape_radius_squared = 4;
+void compute_mandelbrot(void) {
+    const double escape_radius_squared = 4.0;
+    unsigned long long checksum = 0;
 
-    int iteration;
-    int i_x;
-    int i_y;
+    #pragma omp parallel for schedule(static) reduction(+:checksum)
+    for (int i_y = 0; i_y < i_y_max; i_y++) {
+        double c_y = c_y_min + i_y * pixel_height;
 
-    double c_x;
-    double c_y;
-
-    for(i_y = 0; i_y < i_y_max; i_y++){
-        c_y = c_y_min + i_y * pixel_height;
-
-        if(fabs(c_y) < pixel_height / 2){
+        if (fabs(c_y) < pixel_height / 2) {
             c_y = 0.0;
-        };
+        }
 
-        for(i_x = 0; i_x < i_x_max; i_x++){
-            c_x         = c_x_min + i_x * pixel_width;
+        for (int i_x = 0; i_x < i_x_max; i_x++) {
+            const double c_x = c_x_min + i_x * pixel_width;
+            double z_x = 0.0;
+            double z_y = 0.0;
+            double z_x_squared = 0.0;
+            double z_y_squared = 0.0;
+            int iteration;
 
-            z_x         = 0.0;
-            z_y         = 0.0;
-
-            z_x_squared = 0.0;
-            z_y_squared = 0.0;
-
-            for(iteration = 0;
-                iteration < iteration_max && \
-                ((z_x_squared + z_y_squared) < escape_radius_squared);
-                iteration++){
-                z_y         = 2 * z_x * z_y + c_y;
-                z_x         = z_x_squared - z_y_squared + c_x;
+            for (iteration = 0;
+                 iteration < iteration_max &&
+                 z_x_squared + z_y_squared < escape_radius_squared;
+                 iteration++) {
+                z_y = 2 * z_x * z_y + c_y;
+                z_x = z_x_squared - z_y_squared + c_x;
 
                 z_x_squared = z_x * z_x;
                 z_y_squared = z_y * z_y;
-            };
+            }
 
-            update_rgb_buffer(iteration, i_x, i_y);
-        };
-    };
-};
+            if (benchmark_mode) {
+                checksum += (unsigned long long) iteration;
+            } else {
+                update_rgb_buffer(iteration, i_x, i_y);
+            }
+        }
+    }
 
-int main(int argc, char *argv[]){
+    if (benchmark_mode) {
+        benchmark_checksum = checksum;
+    }
+}
+
+int main(int argc, char *argv[]) {
     init(argc, argv);
 
-    allocate_image_buffer();
+    if (argc == 7) {
+        if (strcmp(argv[6], "--benchmark") == 0) {
+            benchmark_mode = 1;
+        } else if (strcmp(argv[6], "--benchmark-check") == 0) {
+            benchmark_mode = 1;
+            show_checksum = 1;
+        } else {
+            fprintf(stderr, "Opção desconhecida: %s\n", argv[6]);
+            return 1;
+        }
+    } else if (argc != 6) {
+        fprintf(stderr, "Uso: %s cx_min cx_max cy_min cy_max tamanho [--benchmark|--benchmark-check]\n",
+                argv[0]);
+        return 1;
+    }
+
+    if (!benchmark_mode) {
+        allocate_image_buffer();
+    }
 
     compute_mandelbrot();
 
-    write_to_file();
+    if (!benchmark_mode) {
+        write_to_file();
+    } else if (show_checksum) {
+        printf("%llu\n", benchmark_checksum);
+    }
 
     return 0;
-};
+}
