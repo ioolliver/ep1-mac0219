@@ -3,3 +3,4 @@ mandelbrot_pth
 mandelbrot_seq
 wall_timer
 output/images
+.venv
